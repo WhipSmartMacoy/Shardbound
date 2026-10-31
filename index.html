@@ -74,12 +74,95 @@ addEventListener('resize',fit);addEventListener('orientationchange',()=>setTimeo
 
 // ================= audio =================
 let AC=null,muted=false;
-function audio(){if(!AC){try{AC=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}}if(AC&&AC.state==='suspended')AC.resume().catch(()=>{})}
+function audio(){if(!AC){try{AC=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}}if(AC&&AC.state!=='running')AC.resume().then(()=>{if(MUS.want&&!MUS.timer)playSong(MUS.want)}).catch(()=>{});else if(AC&&MUS.want&&!MUS.timer&&!muted)playSong(MUS.want)}
+// ================= music (original SNES-style compositions) =================
+const NOTE={C:0,'C#':1,Db:1,D:2,'D#':3,Eb:3,E:4,F:5,'F#':6,Gb:6,G:7,'G#':8,Ab:8,A:9,'A#':10,Bb:10,B:11};
+const midiOf=n=>{const m=n.match(/^([A-G][#b]?)(-?\d)$/);return 12*(+m[2]+1)+NOTE[m[1]]};
+const mf=m=>440*Math.pow(2,(m-69)/12);
+function chordOf(c){const m=c.match(/^([A-G][#b]?)(m?)$/);let r=48+NOTE[m[1]];if(r>55)r-=12;return [r,r+(m[2]?3:4),r+7]}
+const SONG_DEF={
+ camp:{bpm:76,lead:'flute',harp:true,bass:'half',pad:.8,
+  chords:['C','Am','F','G','C','Em','F G','C'],
+  mel:'E5-3 D5-1 C5-2 G4-2  A4-3 C5-1 E5-4  F5-3 E5-1 D5-2 C5-2  D5-6 r-2  E5-3 G5-1 C6-2 B5-2  B5-3 G5-1 E5-4  A5-2 G5-2 F5-2 D5-2  C5-6 r-2'},
+ dungeon:{bpm:80,lead:'flute',harp:true,bass:'whole',pad:1,
+  chords:['Am','Am','F','E','Dm','Am','Bb','E'],
+  mel:'r-4 E5-2 F5-2  E5-6 C5-2  A4-4 C5-2 D5-2  G#4-6 B4-2  D5-3 E5-1 F5-4  E5-4 C5-2 A4-2  A#4-4 A4-2 F4-2  E4-6 r-2'},
+ battle:{bpm:152,lead:'brass',bass:'drive',drums:'battle',pad:.6,
+  chords:['Dm','Dm','Bb','C','Dm','Dm','Gm','A'],
+  mel:'D5-2 A4-1 D5-1 F5-2 E5-1 D5-1  C5-2 D5-2 A4-4  D5-2 F5-1 G5-1 A5-2 G5-1 F5-1  E5-2 G5-2 C5-4  F5-2 E5-1 D5-1 A5-3 G5-1  F5-2 E5-2 D5-4  G5-2 A#5-2 A5-2 G5-2  A5-4 C#5-2 E5-2'},
+ boss:{bpm:168,lead:'brass',bass:'ostinato',drums:'boss',pad:.7,
+  chords:['Em','Em','C','B','Em','Em','C','B'],
+  mel:'E5-4 B4-2 E5-2  G5-3 F#5-1 E5-2 D#5-2  C5-4 E5-2 G5-2  F#5-6 D#5-2  E5-2 G5-2 B5-2 A#5-2  B5-4 G5-2 E5-2  C6-3 B5-1 A5-2 G5-2  F#5-4 D#5-4'},
+};
+const SONG_TR={dungeon0:0,dungeon1:-2,dungeon2:1};
+function buildSong(name){const base=name.startsWith('dungeon')?'dungeon':name,S=SONG_DEF[base],tr=SONG_TR[name]||0,ev=[];
+ S.chords.forEach((cs,b)=>{const parts=cs.split(' ');parts.forEach((cn,pi)=>{const len=16/parts.length,st=b*16+pi*len,ch=chordOf(cn).map(n=>n+tr);
+  ev.push({t:st,d:len,i:'pad',n:ch.map(n=>n+12),v:S.pad});
+  if(S.harp){const pat=[0,1,2,3,2,1,0,1];for(let k=0;k<len;k+=2){const ix=pat[(k/2)%8];ev.push({t:st+k,d:3,i:'harp',n:[(ix===3?ch[0]+12:ch[ix])+12]})}}
+  if(S.bass==='whole')ev.push({t:st,d:len,i:'bass',n:[ch[0]-12]});
+  else if(S.bass==='half'){ev.push({t:st,d:len/2,i:'bass',n:[ch[0]-12]});ev.push({t:st+len/2,d:len/2,i:'bass',n:[ch[2]-24]})}
+  else if(S.bass==='drive'){for(let k=0;k<len;k+=2)ev.push({t:st+k,d:2,i:'bass',n:[ch[0]-12+((k/2)%2?12:0)]})}
+  else if(S.bass==='ostinato'){const o=[0,0,3,0,6,0,5,3];for(let k=0;k<len;k+=2)ev.push({t:st+k,d:2,i:'bass',n:[ch[0]-12+o[(k/2)%8]]})}})});
+ for(let b=0;b<S.chords.length&&S.drums;b++){const s=b*16;
+  if(S.drums==='battle'){[0,8,10].forEach(k=>ev.push({t:s+k,i:'kick'}));[4,12].forEach(k=>ev.push({t:s+k,i:'snare'}));for(let k=0;k<16;k+=2)ev.push({t:s+k,i:'hat'})}
+  else{[0,8].forEach(k=>ev.push({t:s+k,i:'timp',n:[chordOf(S.chords[b].split(' ')[0])[0]-24+tr]}));[4,12].forEach(k=>ev.push({t:s+k,i:'snare'}));[0,3,6,10,14].forEach(k=>ev.push({t:s+k,i:'kick'}));for(let k=0;k<16;k++)ev.push({t:s+k,i:'hat',v:k%2?.5:1})}}
+ let t=0;S.mel.trim().split(/\s+/).forEach(tok=>{const [n,l]=tok.split('-'),len=+l*2;if(n!=='r')ev.push({t,d:len,i:S.lead,n:[midiOf(n)+tr]});t+=len});
+ ev.sort((a,b)=>a.t-b.t);return {ev,len:S.chords.length*16,step:60/S.bpm/4}}
+const MUS={want:null,name:null,song:null,idx:0,loopT:0,timer:null,bus:null,out:null,cache:{}};
+function musicSetup(){if(MUS.bus||!AC)return;const bus=AC.createGain();bus.gain.value=.6;const comp=AC.createDynamicsCompressor();comp.threshold.value=-14;comp.ratio.value=4;
+ const rev=AC.createConvolver(),len=Math.floor(AC.sampleRate*2.4),buf=AC.createBuffer(2,len,AC.sampleRate);
+ for(let c=0;c<2;c++){const d=buf.getChannelData(c);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,3)}rev.buffer=buf;
+ const wet=AC.createGain();wet.gain.value=.34;bus.connect(comp);bus.connect(rev);rev.connect(wet);wet.connect(comp);comp.connect(AC.destination);
+ const nb=AC.createBuffer(1,AC.sampleRate,AC.sampleRate),nd=nb.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;MUS.noise=nb;MUS.bus=bus}
+function playSong(name){MUS.want=name;if(!AC||AC.state!=='running')return;if(MUS.name===name&&MUS.timer)return;stopSong();if(!name||muted)return;musicSetup();
+ MUS.name=name;MUS.song=MUS.cache[name]||(MUS.cache[name]=buildSong(name));MUS.idx=0;MUS.loopT=AC.currentTime+.1;
+ MUS.out=AC.createGain();MUS.out.gain.setValueAtTime(0,AC.currentTime);MUS.out.gain.linearRampToValueAtTime(1,AC.currentTime+.6);MUS.out.connect(MUS.bus);
+ MUS.timer=setInterval(musicTick,40);musicTick()}
+function stopSong(fade=.12){if(MUS.timer){clearInterval(MUS.timer);MUS.timer=null}if(MUS.out&&AC){const g=MUS.out;try{g.gain.cancelScheduledValues(AC.currentTime);g.gain.setTargetAtTime(0,AC.currentTime,fade)}catch(e){}setTimeout(()=>{try{g.disconnect()}catch(e){}},1500)}MUS.out=null;MUS.name=null}
+function musicTick(){const S=MUS.song;if(!S||!AC)return;const ahead=AC.currentTime+.3;let guard=0;
+ while(guard++<400){if(MUS.idx>=S.ev.length){MUS.idx=0;MUS.loopT+=S.len*S.step}const e=S.ev[MUS.idx],t=MUS.loopT+e.t*S.step;if(t>ahead)break;
+  if(t<AC.currentTime-.05){MUS.loopT=Math.max(MUS.loopT,AC.currentTime-e.t*S.step+.05);continue}playEv(e,t,S.step,MUS.out);MUS.idx++}}
+function mkOsc(type,f,t,end,det=0){const o=AC.createOscillator();o.type=type;o.frequency.value=f;o.detune.value=det;o.start(t);o.stop(end);return o}
+function mkNoise(t,dur){const s=AC.createBufferSource();s.buffer=MUS.noise;s.start(t,Math.random()*.5);s.stop(t+dur);return s}
+function vib(f,t,end,oscs,depth=.006,delay=.25){const l=mkOsc('sine',5.4,t,end),g=AC.createGain();g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(f*depth,t+delay);l.connect(g);oscs.forEach(o=>g.connect(o.frequency))}
+function playEv(e,t,step,out){if(!out)return;const dur=(e.d||1)*step,v=e.v==null?1:e.v;
+ switch(e.i){
+ case 'flute':case 'brass':for(const n of e.n){const f=mf(n),end=t+dur+.5,g=AC.createGain(),lp=AC.createBiquadFilter();lp.type='lowpass';
+  const br=e.i==='brass',pk=(br?.07:.085)*v;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(pk,t+(br?.03:.05));g.gain.setTargetAtTime(pk*.75,t+.06,.15);g.gain.setTargetAtTime(0,t+dur*.92,.07);
+  let os;if(br){os=[mkOsc('sawtooth',f,t,end,-7),mkOsc('square',f,t,end,7)];lp.frequency.setValueAtTime(3200,t);lp.frequency.setTargetAtTime(1500,t,.18)}
+  else{os=[mkOsc('triangle',f,t,end),mkOsc('sine',f*2,t,end)];lp.frequency.value=4000;const nz=mkNoise(t,.08),ng=AC.createGain();ng.gain.setValueAtTime(.02*v,t);ng.gain.exponentialRampToValueAtTime(.0001,t+.08);nz.connect(ng);ng.connect(out)}
+  const mix=AC.createGain();mix.gain.value=br?.5:.7;os.forEach((o,i)=>{if(!br&&i===1){const q=AC.createGain();q.gain.value=.18;o.connect(q);q.connect(mix)}else o.connect(mix)});
+  vib(f,t,end,os);mix.connect(lp);lp.connect(g);g.connect(out)}break;
+ case 'pad':for(const n of e.n){const f=mf(n),end=t+dur+.8,g=AC.createGain(),lp=AC.createBiquadFilter();lp.type='lowpass';lp.frequency.value=950;const pk=.02*v;
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(pk,t+.3);g.gain.setTargetAtTime(0,t+dur,.25);
+  [-8,8].forEach(d=>mkOsc('sawtooth',f,t,end,d).connect(lp));lp.connect(g);g.connect(out)}break;
+ case 'harp':for(const n of e.n){const f=mf(n),g=AC.createGain();g.gain.setValueAtTime(.055*v,t);g.gain.exponentialRampToValueAtTime(.0001,t+1.1);
+  mkOsc('triangle',f,t,t+1.2).connect(g);const g2=AC.createGain();g2.gain.setValueAtTime(.018*v,t);g2.gain.exponentialRampToValueAtTime(.0001,t+.4);mkOsc('sine',f*2,t,t+.5).connect(g2);g2.connect(out);g.connect(out)}break;
+ case 'bass':for(const n of e.n){const f=mf(n),g=AC.createGain(),lp=AC.createBiquadFilter();lp.type='lowpass';lp.frequency.value=700;
+  g.gain.setValueAtTime(.16*v,t);g.gain.setTargetAtTime(.09*v,t+.02,.12);g.gain.setTargetAtTime(0,t+dur*.88,.04);
+  mkOsc('triangle',f,t,t+dur+.3).connect(lp);const sq=mkOsc('square',f,t,t+dur+.3),sg=AC.createGain();sg.gain.value=.25;sq.connect(sg);sg.connect(lp);lp.connect(g);g.connect(out)}break;
+ case 'kick':{const o=mkOsc('sine',140,t,t+.25),g=AC.createGain();o.frequency.exponentialRampToValueAtTime(42,t+.12);g.gain.setValueAtTime(.32*v,t);g.gain.exponentialRampToValueAtTime(.0001,t+.2);o.connect(g);g.connect(out);break}
+ case 'snare':{const s=mkNoise(t,.2),hp=AC.createBiquadFilter(),g=AC.createGain();hp.type='highpass';hp.frequency.value=1300;g.gain.setValueAtTime(.12*v,t);g.gain.exponentialRampToValueAtTime(.0001,t+.15);s.connect(hp);hp.connect(g);g.connect(out);
+  const o=mkOsc('triangle',190,t,t+.08),og=AC.createGain();og.gain.setValueAtTime(.08*v,t);og.gain.exponentialRampToValueAtTime(.0001,t+.07);o.connect(og);og.connect(out);break}
+ case 'hat':{const s=mkNoise(t,.05),hp=AC.createBiquadFilter(),g=AC.createGain();hp.type='highpass';hp.frequency.value=7500;g.gain.setValueAtTime(.032*v,t);g.gain.exponentialRampToValueAtTime(.0001,t+.04);s.connect(hp);hp.connect(g);g.connect(out);break}
+ case 'timp':{const f=mf(e.n[0]),o=mkOsc('sine',f*1.25,t,t+.8),g=AC.createGain();o.frequency.exponentialRampToValueAtTime(f,t+.3);g.gain.setValueAtTime(.3*v,t);g.gain.exponentialRampToValueAtTime(.0001,t+.7);o.connect(g);g.connect(out);break}}}
+// one-shot jingles (original)
+const JINGLES={
+ win:{bpm:132,lead:'brass',mel:'G4-1 C5-1 E5-1 G5-1 E5-1 G5-1 C6-10',pad:['C',6]},
+ lose:{bpm:60,lead:'flute',mel:'A4-2 G4-2 F4-2 E4-6',pad:['Dm',0]},
+ unlock:{bpm:140,lead:'flute',mel:'C5-1 E5-1 G5-1 C6-1 E6-4',pad:['C',4]}};
+function jingle(name){stopSong(.05);MUS.want=null;if(!AC||AC.state!=='running'||muted)return;musicSetup();const J=JINGLES[name],step=60/J.bpm/2,out=AC.createGain();out.connect(MUS.bus);
+ let t=AC.currentTime+.05;J.mel.split(' ').forEach(tok=>{const [n,l]=tok.split('-');playEv({i:J.lead,n:[midiOf(n)],d:+l*2},t,step/2,out);t+=+l*step});
+ playEv({i:'pad',n:chordOf(J.pad[0]).map(x=>x+12),d:16},AC.currentTime+.05+J.pad[1]*step,step,out);setTimeout(()=>{try{out.disconnect()}catch(e){}},6000)}
+function setMuted(v){muted=v;try{localStorage.setItem('sb_muted',v?'1':'0')}catch(e){}if(v)stopSong();else playSong(MUS.want)}
+try{muted=localStorage.getItem('sb_muted')==='1'}catch(e){}
+const soundItem=()=>({label:'Sound: '+(muted?'Off':'On'),value:'snd'});
+
 function tone(f,d=.08,type='square',v=.04,slide=0,delay=0){if(!AC||muted)return;try{const t=AC.currentTime+delay,o=AC.createOscillator(),g=AC.createGain();o.type=type;o.frequency.setValueAtTime(f,t);if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(30,f+slide),t+d);g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+d+.02)}catch(e){}}
 const SFX={move:()=>tone(880,.03,'square',.02),ok:()=>{tone(660,.04);tone(990,.06,'square',.04,0,.04)},back:()=>tone(330,.06),err:()=>tone(140,.12,'sawtooth',.04),
 hit:()=>tone(200,.1,'sawtooth',.06,-140),crit:()=>{tone(300,.12,'sawtooth',.07,-200);tone(900,.08,'square',.04,0,.03)},magic:()=>tone(400,.3,'triangle',.06,800),
-heal:()=>[523,659,784].forEach((f,i)=>tone(f,.12,'triangle',.05,0,i*.06)),win:()=>[523,523,523,659,784,659,1047].forEach((f,i)=>tone(f,.14,'square',.04,0,i*.11)),
-door:()=>tone(220,.12,'triangle',.05,-100),coin:()=>{tone(988,.05);tone(1319,.12,'square',.04,0,.05)},unlock:()=>[392,523,659,784,1047].forEach((f,i)=>tone(f,.2,'triangle',.06,0,i*.09)),
+heal:()=>[523,659,784].forEach((f,i)=>tone(f,.12,'triangle',.05,0,i*.06)),win:()=>jingle('win'),
+door:()=>tone(220,.12,'triangle',.05,-100),coin:()=>{tone(988,.05);tone(1319,.12,'square',.04,0,.05)},unlock:()=>{if(MUS.timer)[392,523,659,784,1047].forEach((f,i)=>tone(f,.2,'triangle',.06,0,i*.09));else jingle('unlock')},
 die:()=>tone(300,.5,'sawtooth',.05,-250),enc:()=>{for(let i=0;i<6;i++)tone(200+i*120,.06,'square',.04,0,i*.04)}};
 
 // ================= meta save =================
@@ -347,7 +430,7 @@ function menuHTML(m,mi,active){
 function render(){let h=panelsHTML();if(infoHTML)h+=`<div class="win" style="${infoStyle}">${infoHTML}</div>`;menus.forEach((m,i)=>h+=menuHTML(m,i,i===menus.length-1));ui.innerHTML=h}
 
 const KEYS={ArrowUp:'up',w:'up',W:'up',ArrowDown:'down',s:'down',S:'down',ArrowLeft:'left',a:'left',A:'left',ArrowRight:'right',d:'right',D:'right',Enter:'a',z:'a',Z:'a',' ':'a',Escape:'b',x:'b',X:'b',Backspace:'b'};
-addEventListener('keydown',e=>{audio();if(e.key==='m'||e.key==='M'){muted=!muted;return}const k=KEYS[e.key];if(!k)return;e.preventDefault();if(e.repeat&&(k==='a'||k==='b'))return;handleKey(k)});
+addEventListener('keydown',e=>{audio();if(e.key==='m'||e.key==='M'){setMuted(!muted);return}const k=KEYS[e.key];if(!k)return;e.preventDefault();if(e.repeat&&(k==='a'||k==='b'))return;handleKey(k)});
 function handleKey(k){
  if(menus.length)return menuKey(k);
  if(mode==='dungeon'&&!busy&&run){if(k==='up')tryMove(0,-1);else if(k==='down')tryMove(0,1);else if(k==='left')tryMove(-1,0);else if(k==='right')tryMove(1,0);else if(k==='a')doRoomAction();else if(k==='b')pauseMenu()}}
@@ -512,13 +595,13 @@ const HOWTO=`<h3>How to Play</h3><b class="y">The loop:</b> Descend 3 procedural
 <b class="y">Permanent:</b> earn <span class="y">✦ Soul Shards</span> every run and spend them at Camp. Feats unlock new relics.<br>
 <b class="y">Heroes:</b> you start with Kael. Three more join, each unlocked a different way. Every new hero grows your party, adds their relics to the pool and opens the next Camp tier.<br>
 <span class="dim">Arrows/WASD move · Z/Enter confirm · X/Esc back/menu · M mute · mouse works too</span>`;
-async function title(){mode='title';run=null;B=null;menus=[];render();await fade(0,400);
- while(true){const v=await choose({x:330,y:290,w:300,cancel:false,items:[{label:'Enter Camp',value:'camp'},{label:'How to Play',value:'how'},{label:'Erase Progress',value:'reset'}]});
+async function title(){mode='title';run=null;B=null;menus=[];render();playSong('camp');await fade(0,400);
+ while(true){const v=await choose({x:330,y:290,w:300,cancel:false,items:[{label:'Enter Camp',value:'camp'},{label:'How to Play',value:'how'},{label:'Erase Progress',value:'reset'},soundItem()]});if(v==='snd'){setMuted(!muted);continue}
   if(v==='camp'){await fade(1,250);return camp()}
   if(v==='how')await say(HOWTO,{x:60,y:40,w:840});
   if(v==='reset'&&await confirmBox('Erase ALL permanent progress?')){meta=META_DEFAULT();save();await say('Progress erased.')}}}
-async function camp(){mode='camp';run=null;B=null;busy=false;menus=[];infoHTML=null;render();await fade(0,300);let idx=0;
- while(true){const v=await choose({title:'Camp',x:24,y:300,w:280,cancel:false,idx,rows:7,items:[{label:'Embark',value:0},{label:'Upgrades',value:1},{label:'Heroes',value:2},{label:'Relic Codex',value:3},{label:'Feats',value:4},{label:'How to Play',value:5},{label:'Title',value:6}]});idx=v;
+async function camp(){mode='camp';run=null;B=null;busy=false;menus=[];infoHTML=null;render();playSong('camp');await fade(0,300);let idx=0;
+ while(true){const v=await choose({title:'Camp',x:24,y:270,w:280,cancel:false,idx,rows:8,items:[{label:'Embark',value:0},{label:'Upgrades',value:1},{label:'Heroes',value:2},{label:'Relic Codex',value:3},{label:'Feats',value:4},{label:'How to Play',value:5},{label:'Title',value:6},soundItem()]});if(v==='snd'){setMuted(!muted);idx=7;continue}idx=v;
   if(v===0){await fade(1,300);return startRun()}
   if(v===1)await upgradesMenu();if(v===2)await heroesMenu();if(v===3)await codexMenu();if(v===4)await featsMenu();if(v===5)await say(HOWTO,{x:60,y:40,w:840});
   if(v===6){await fade(1,250);return title()}}}
@@ -554,7 +637,7 @@ async function startRun(){
  await enterFloor(0)}
 async function enterFloor(fi){busy=true;run.floor=fi;run.map=genFloor(fi);run.pos=[4,4];run.prev=null;run.fairyUsed=false;run.dir=null;
  if(has('goldkey'))run.keys++;meta.st.best=Math.max(meta.st.best,fi+1);save();
- mode='dungeon';fadeA=1;card={a:`FLOOR ${fi+1}`,b:FLOORS[fi].name};render();await sleep(1400);card=null;
+ mode='dungeon';fadeA=1;card={a:`FLOOR ${fi+1}`,b:FLOORS[fi].name};render();playSong('dungeon'+fi);await sleep(1400);card=null;
  if(has('compass'))Object.values(run.map.R).forEach(r=>r.seen=true);reveal(4,4);render();await fade(0,300);
  if(fi===2)await grant('delver');
  if(fi===0&&meta.st.runs===1)await say('<span class="y">Tip:</span> Walk through doors with the arrow keys or by clicking them. The minimap (top right) marks special rooms: <span style="color:#ff4040">boss</span>, <span class="y">reliquary</span>, <span class="g">shop</span>.');
@@ -582,7 +665,7 @@ async function checkFeats(){if(meta.st.kills>=50)await grant('slayer');if(meta.s
 async function endRun(victory){busy=true;if(victory)meta.st.wins++;else meta.st.deaths++;
  const rs=roster().length,base=run.kills+run.bosses*15+(run.floor+1)*5+(victory?60:0),mult=(1+.1*(rs-1))*(up('siphon')?1.3:1),earned=Math.round(base*mult);
  meta.shards+=earned;meta.st.shardsTotal+=earned;save();await checkFeats();
- await fade(1,300);mode='end';B=null;render();await fade(0,200);
+ await fade(1,300);mode='end';B=null;render();if(victory)playSong('camp');await fade(0,200);
  await say(`<div class="ban">${victory?'★ THE SHARD IS RESTORED ★':'EXPEDITION FAILED'}</div>${victory?'Dawn breaks over the Under-Spire. (End of demo — keep running for unlocks!)<br>':''}
  Reached floor ${run.floor+1} · Monsters slain ${run.kills} · Bosses ${run.bosses}<br>Relics held: <span class="p">${run.relics.map(r=>RELICS[r].name).join(', ')||'none'}</span><br><br>
  Soul Shards: ${run.kills} kills + ${run.bosses*15} bosses + ${(run.floor+1)*5} depth${victory?' + 60 victory':''} × ${mult.toFixed(2)} = <span class="y">✦ ${earned}</span><br>
@@ -631,7 +714,7 @@ async function actShop(r){if(!r.stock){const st=[{k:'item',id:'potion'},{k:'item
   if(v==='pip'){await say('The merchant pockets the gold. The kid grins: "Name\'s <span class="y">Pip</span>. Your pockets are safe... probably."');await grant('debt');continue}
   const s=r.stock[v];if(s.k==='item')run.items[s.id]=(run.items[s.id]||0)+1;else if(s.k==='key'){run.keys++;s.sold=true}else{gainRelic(s.id);s.sold=true;await say(`Obtained <span class="p">${RELICS[s.id].name}</span>!`)}render()}}
 async function pauseMenu(){if(busy||menus.length||!run)return;busy=true;let idx=0;
- try{while(true){const v=await choose({title:'Menu',x:300,y:90,w:320,idx,items:[{label:'Party',value:0},{label:'Relics',value:1},{label:'Items',value:2},{label:'Abandon run',value:3},{label:'Close',value:4}]});
+ try{while(true){const v=await choose({title:'Menu',x:300,y:90,w:320,idx,items:[{label:'Party',value:0},{label:'Relics',value:1},{label:'Items',value:2},{label:'Abandon run',value:3},soundItem(),{label:'Close',value:4}]});if(v==='snd'){setMuted(!muted);idx=4;continue}
   if(v===null||v===4)return;idx=v;
   if(v===0)await say(run.party.map(h=>{const s=stats(h);return `<div style="display:flex;gap:10px;margin-bottom:6px"><img class="px" src="${heroURL(h.id,3,h.hp>0?0:3)}" width="48" height="48"><div><span class="y">${nm(h)}</span> Lv${h.lv} <span class="dim">EXP ${h.xp}/${xpNeed(h.lv)}</span><br><small>HP ${h.hp}/${s.hp} MP ${h.mp}/${s.mp} · STR ${s.str} MAG ${s.mag} DEF ${s.def} AGI ${s.agi}</small></div></div>`}).join(''),{x:150,y:30,w:660});
   if(v===1){if(!run.relics.length)await say('No relics yet. Find them in reliquaries, shops and altars.');else await choose({title:'Relics',x:24,y:40,w:420,rows:10,items:run.relics.map(id=>({label:RELICS[id].name,id,value:id})),onHover:it=>setInfo(`<h3>${RELICS[it.id].name}</h3>${RELICS[it.id].desc}`,INFO_R)})}
@@ -654,7 +737,7 @@ async function battle(keys,opt={}){busy=true;SFX.enc();
  const n=run.party.length,enemies=keys.map(k=>makeEnemy(k,n));const cnt={};enemies.forEach(e=>{cnt[e.name]=(cnt[e.name]||0)+1});const seen={};
  enemies.forEach(e=>{if(cnt[e.name]>1){seen[e.name]=(seen[e.name]||0)+1;e.label=e.name+' '+'ABCD'[seen[e.name]-1]}else e.label=e.name});
  if(enemies.length===1&&enemies[0].boss){enemies[0].x=150;enemies[0].y=196}else enemies.forEach((e,i)=>{[e.x,e.y]=SLOTS[enemies.length][i]});
- B={enemies,fx:[],round:0,boss:!!opt.boss,cursor:null,acting:null,step:null,msg:'',def:new Set(),hurt:new Map()};mode='battle';render();await fade(0,220);
+ playSong(opt.boss?'boss':'battle');B={enemies,fx:[],round:0,boss:!!opt.boss,cursor:null,acting:null,step:null,msg:'',def:new Set(),hurt:new Map()};mode='battle';render();await fade(0,220);
  let result=null;
  while(true){B.round++;
   if(B.round>1){if(has('etherleaf'))run.party.forEach(h=>{if(h.hp>0)h.mp=Math.min(stats(h).mp,h.mp+2)});
@@ -669,8 +752,8 @@ async function battle(keys,opt={}){busy=true;SFX.enc();
   for(const e of B.enemies)if(!e.dead&&e.poison>0){e.poison--;damageEnemy(e,Math.max(1,Math.round(e.maxhp*.08)),'#b060ff');await sleep(350)}
   result=checkEnd();if(result)break}
  if(result==='win'){await sleep(500);await victory()}
- if(result==='lose'){SFX.die();await sleep(500);await say('Your party has fallen...')}
- if(result!=='lose'){await fade(1,220);B=null;mode='dungeon';render();await fade(0,220)}
+ if(result==='lose'){jingle('lose');await sleep(500);await say('Your party has fallen...')}
+ if(result!=='lose'){await fade(1,220);B=null;mode='dungeon';render();playSong('dungeon'+run.floor);await fade(0,220)}
  return result}
 function checkEnd(){if(B.enemies.every(e=>e.dead))return 'win';if(run.party.every(h=>h.hp<=0))return 'lose';return null}
 async function inputPhase(){const alive=run.party.filter(h=>h.hp>0);const cmds=new Map();let i=0;
