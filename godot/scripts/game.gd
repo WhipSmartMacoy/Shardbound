@@ -284,7 +284,7 @@ func heroes_menu() -> void:
 			var sk = []
 			for s in C.skills:
 				sk.append("Lv%d %s" % [D.SK[s].lv, D.SK[s].name])
-			UI.set_info("[img=96x96]res://assets/sprites/hero_%s.png[/img]\n%s\n%s\nHP %s  STR %s\nMAG %s  DEF %s\nAGI %s  MP %s\n%s" % [it.id, c(Y, "%s · %s" % [C.name, C.title]), C.blurb,
+			UI.set_info("[img=87]res://assets/sprites/hero_%s.png[/img]\n%s\n%s\nHP %s  STR %s\nMAG %s  DEF %s\nAGI %s  MP %s\n%s" % [it.id, c(Y, "%s · %s" % [C.name, C.title]), C.blurb,
 				stars(g.hp), stars(g.str), stars(g.mag), stars(g.def), stars(g.agi), stars(g.mp), c(DIM, ", ".join(sk))], INFO_R)
 		else:
 			UI.set_info("%s\nHow to unlock:\n%s" % [c(Y, "Locked hero"), c(Y, C.hint)], INFO_R)})
@@ -609,7 +609,7 @@ func grant(id: String) -> void:
 				if mode == "dungeon":
 					world.build_room(run)
 				UI.refresh()
-		await UI.say("[img=96x96]res://assets/sprites/hero_%s.png[/img]\n%s\n%s joins your party!\n%s" % [cid, c(Y, "★ NEW HERO UNLOCKED ★"), c(Y, "%s the %s" % [C.name, C.title]),
+		await UI.say("[img=87]res://assets/sprites/hero_%s.png[/img]\n%s\n%s joins your party!\n%s" % [cid, c(Y, "★ NEW HERO UNLOCKED ★"), c(Y, "%s the %s" % [C.name, C.title]),
 			c("#c8cff8", "%s %s's relics join the pool and Camp Tier %s opens." % [C.blurb, C.name, TIERS[Meta.roster().size() - 1]])])
 		if Meta.roster().size() == 4:
 			await grant("party")
@@ -867,7 +867,7 @@ func pause_menu() -> void:
 			var txt = ""
 			for h in run.party:
 				var s = stats(h)
-				txt += "[img=48x48]res://assets/sprites/hero_%s.png[/img] %s Lv%d %s\n   HP %d/%d  MP %d/%d · STR %d MAG %d DEF %d AGI %d\n" % [h.id, c(Y, nm(h)), h.lv, c(DIM, "EXP %d/%d" % [h.xp, xp_need(h.lv)]), h.hp, s.hp, h.mp, s.mp, s.str, s.mag, s.def, s.agi]
+				txt += "[img=44]res://assets/sprites/hero_%s.png[/img] %s Lv%d %s\n   HP %d/%d  MP %d/%d · STR %d MAG %d DEF %d AGI %d\n" % [h.id, c(Y, nm(h)), h.lv, c(DIM, "EXP %d/%d" % [h.xp, xp_need(h.lv)]), h.hp, s.hp, h.mp, s.mp, s.str, s.mag, s.def, s.agi]
 			await UI.say(txt.strip_edges(), {"x": 160, "y": 40, "w": 960})
 		elif v == 1:
 			if run.relics.is_empty():

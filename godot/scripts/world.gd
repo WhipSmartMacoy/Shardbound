@@ -1,7 +1,9 @@
 extends Node3D
 ## HD-2D world: pixel-art billboards inside lit 3D rooms (torches, shadows, glow, fog, depth of field).
 
-const PX := 1.1 / 32.0          # world units per sprite pixel (heroes are 32 px -> 1.1 units tall)
+const PX := 1.1 / 32.0          # world units per prop pixel (props are drawn at 2 px per art pixel)
+const HERO_S := 32.0 / 24.0     # hero sprites: 24 px tall body -> 1.1 units
+const ENEMY_H := 1.4            # regular monsters stand taller than the heroes, FF5-style
 const SPR := "res://assets/sprites/"
 
 var cam: Camera3D
@@ -55,6 +57,8 @@ func _process(delta: float) -> void:
 				a.n.position.y = a.y + sin(t * a.get("spd", 2.0) + a.get("ph", 0.0)) * a.get("amp", 0.08)
 			"spin":
 				a.n.rotation.y += delta * a.get("spd", 1.0)
+			"cheer":
+				a.n.texture = tex(SPR + "hero_%s_%s.png" % [a.id, "victory" if int(t * 3.0 + a.ph) % 2 == 0 else "stand"])
 	if cursor.visible and cursor_target != null and cursor_target.has("node") and is_instance_valid(cursor_target.node):
 		var n = cursor_target.node
 		cursor.global_position = n.global_position + Vector3(0, unit_height(cursor_target) + 0.35 + sin(t * 8.0) * 0.06, 0)
@@ -128,6 +132,32 @@ func spr(path: String, scale: float = 1.0, shaded: bool = true, parent: Node = n
 	s.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shaded else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	(parent if parent else content).add_child(s)
 	return s
+
+func hero_spr(id: String, pose: String = "stand") -> Sprite3D:
+	return spr(SPR + "hero_%s_%s.png" % [id, pose], HERO_S)
+
+func idle_pose(h: Dictionary) -> String:
+	return "kneel" if (h.hp > 0 and h.hp < G.stats(h).hp * 0.25) else "stand"
+
+func set_pose(h: Dictionary, pose: String) -> void:
+	if h.has("node") and is_instance_valid(h.node) and h.hp > 0:
+		h.node.texture = tex(SPR + "hero_%s_%s.png" % [h.id, pose])
+
+func pose_for(h: Dictionary, pose: String, dur: float) -> void:
+	set_pose(h, pose)
+	get_tree().create_timer(dur).timeout.connect(func():
+		if Bt.active and h.has("node") and h.hp > 0:
+			set_pose(h, idle_pose(h)))
+
+func refresh_poses(party: Array) -> void:
+	for h in party:
+		if h.hp > 0:
+			set_pose(h, idle_pose(h))
+
+func victory_dance(party: Array) -> void:
+	for h in party:
+		if h.hp > 0 and h.has("node"):
+			anims.append({"n": h.node, "k": "cheer", "id": h.id, "ph": randf()})
 
 func prop(name: String, pos: Vector3) -> Sprite3D:
 	var s = spr(SPR + "prop_%s.png" % name, 0.5)
@@ -308,7 +338,7 @@ func build_room(run: Dictionary) -> void:
 	var n = run.party.size()
 	for i in n:
 		var h = run.party[i]
-		var s = spr(SPR + "hero_%s.png" % h.id)
+		var s = hero_spr(h.id, "stand")
 		s.position = Vector3(-(n - 1) * 0.65 + i * 1.3, 0, 2.3)
 		s.flip_h = not (run.dir != null and run.dir.x < 0)
 		if h.hp <= 0:
@@ -390,10 +420,12 @@ func _feature(r: Dictionary, run: Dictionary, p: Vector3) -> void:
 				anims.append({"n": orb, "k": "bob", "y": 1.3, "amp": 0.08, "spd": 2.2})
 				light(p + Vector3(0, 1.4, 0.3), Color("#ffd870"), 1.8, 5.0, false, false)
 		"shop":
-			prop("stall", p)
+			var mer = spr(SPR + "npc_merchant.png", HERO_S)
+			mer.position = p + Vector3(0, 0.35, -0.25)
+			prop("stall", p + Vector3(0, 0, 0.05))
 			if not Meta.unlocked.get("pip", false):
-				var s = spr(SPR + "hero_pip.png")
-				s.position = p + Vector3(2.6, 0, 0.3)
+				var s = hero_spr("pip", "hurt")
+				s.position = p + Vector3(2.8, 0, 0.3)
 				blob(s.position, 0.4)
 				var ex = Label3D.new()
 				ex.text = "!"
@@ -470,7 +502,8 @@ func build_battle(fi: int, enemies: Array, party: Array) -> void:
 			enemies[i]["home"] = Vector3((sl[i][0] - 240) / 40.0, 0, (sl[i][1] - 150) / 32.0)
 	for e in enemies:
 		var sc = float(e.get("scale", 2)) / 2.0
-		var s = spr(SPR + "enemy_%s.png" % e.key, sc)
+		var s = spr(SPR + "enemy_%s.png" % e.key)
+		s.pixel_size = enemy_height(e) / float(s.texture.get_height())
 		var hp = e.home + (Vector3(0, 0.7, 0) if e.get("fly", false) else Vector3.ZERO)
 		s.position = hp
 		e["node"] = s
@@ -480,7 +513,7 @@ func build_battle(fi: int, enemies: Array, party: Array) -> void:
 	var n = party.size()
 	for i in n:
 		var h = party[i]
-		var s = spr(SPR + "hero_%s.png" % h.id)
+		var s = hero_spr(h.id, idle_pose(h) if h.hp > 0 else "stand")
 		var z = -1.7 + i * 1.15 + (4 - n) * 0.55
 		h["home"] = Vector3(3.0 + i * 0.35, 0, z)
 		s.position = h.home
@@ -489,9 +522,13 @@ func build_battle(fi: int, enemies: Array, party: Array) -> void:
 		set_dead_pose(h, h.hp <= 0)
 	set_cam(Vector3(0.6, 3.1, 8.6), Vector3(0.5, 0.9, -0.2), 40)
 
+func enemy_height(e: Dictionary) -> float:
+	var sc = float(e.get("scale", 2)) / 2.0
+	return (1.1 if e.get("boss", false) else ENEMY_H) * sc
+
 func unit_height(u: Dictionary) -> float:
 	if u.has("key"):
-		return 1.1 * float(u.get("scale", 2)) / 2.0 * (32.0 / 32.0) + (0.7 if u.get("fly", false) else 0.0)
+		return enemy_height(u) + (0.7 if u.get("fly", false) else 0.0)
 	return 1.1
 
 func center_of(u: Dictionary) -> Vector3:
@@ -505,6 +542,7 @@ func set_dead_pose(h: Dictionary, dead: bool) -> void:
 		return
 	var s = h.node
 	if dead:
+		s.texture = tex(SPR + "hero_%s_stand.png" % h.id)
 		s.modulate = Color(0.4, 0.4, 0.5)
 		s.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 		s.rotation_degrees = Vector3(0, 0, 90)
@@ -514,6 +552,7 @@ func set_dead_pose(h: Dictionary, dead: bool) -> void:
 		s.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
 		s.rotation_degrees = Vector3.ZERO
 		s.position = h.home
+		s.texture = tex(SPR + "hero_%s_%s.png" % [h.id, idle_pose(h)])
 
 func set_cursor(u) -> void:
 	cursor_target = u
@@ -524,7 +563,12 @@ func step(u: Dictionary, fwd: bool) -> void:
 		return
 	var tw = create_tween()
 	var target = u.home + (Vector3(-0.6, 0, 0) if fwd else Vector3.ZERO)
-	tw.tween_property(u.node, "position:x", target.x, 0.12)
+	if u.has("id") and u.hp > 0:
+		set_pose(u, "walk")
+		tw.tween_property(u.node, "position:x", target.x, 0.16)
+		tw.tween_callback(func(): set_pose(u, idle_pose(u) if not fwd else "stand"))
+	else:
+		tw.tween_property(u.node, "position:x", target.x, 0.12)
 
 func flash(u: Dictionary, times: int = 1) -> void:
 	if not u.has("node") or not is_instance_valid(u.node):
@@ -713,7 +757,7 @@ func build_camp(title_mode: bool) -> void:
 	var spots = [[Vector3(-1.9, 0, -0.4), true], [Vector3(1.9, 0, -0.4), false], [Vector3(-1.35, 0, 1.35), true], [Vector3(1.35, 0, 1.35), false]]
 	for i in 4:
 		var id = D.HERO_IDS[i]
-		var s = spr(SPR + "hero_%s.png" % id)
+		var s = hero_spr(id, "stand")
 		s.position = spots[i][0]
 		s.flip_h = spots[i][1]
 		blob(s.position, 0.42)

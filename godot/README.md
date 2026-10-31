@@ -26,3 +26,4 @@ godot --headless --path godot --export-release "Windows Desktop" build/Shardboun
 | `scripts/audio.gd` | Music, jingles, sound effects |
 | `scripts/autotest.gd` | Automated play-tester: `godot --path godot -- --autotest [--cheat] [--shots]` |
 | `assets/` | Sprites, textures, music/SFX (rendered from the web demo), fonts (OFL) |
+| `art_src/` | Pixel-art source (Python): heroes.py (poses), monsters.py, props.py |

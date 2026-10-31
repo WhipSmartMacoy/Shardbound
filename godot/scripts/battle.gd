@@ -81,6 +81,7 @@ func battle(keys: Array, opt: Dictionary):
 				for h in G.run.party:
 					if h.hp > 0: h.hp = mini(G.stats(h).hp, h.hp + roundi(G.stats(h).hp * 0.05))
 			UI.refresh()
+		w().refresh_poses(G.run.party)
 		var cmds = await input_phase()
 		var order = []
 		if typeof(cmds) == TYPE_STRING and cmds == "flee":
@@ -296,10 +297,14 @@ func heal_hero(h: Dictionary, amt: float) -> int:
 	var s = G.stats(h)
 	var b = h.hp
 	h.hp = mini(s.hp, h.hp + roundi(amt))
+	if active and h.hp > 0:
+		w().set_pose(h, w().idle_pose(h))
 	return h.hp - b
 
 func hurt_hero(h: Dictionary, d: int) -> void:
 	h.hp = maxi(0, h.hp - d)
+	if h.hp > 0:
+		w().pose_for(h, "hurt", 0.35)
 	w().shake(h)
 	w().flash(h)
 	w().popup(w().center_of(h), str(d))
@@ -321,6 +326,9 @@ func phys_hit(h: Dictionary, t: Dictionary, pw: float) -> void:
 	var crit = G.rf() < G.crit_chance(h)
 	if crit: d *= 2.5 if G.has_relic("loadeddice") else 1.6
 	var di = maxi(1, roundi(d))
+	w().set_pose(h, "atk1")
+	await G.wait(0.12)
+	w().pose_for(h, "atk2", 0.3)
 	w().slash(w().center_of(t), Color("#ffe94a") if crit else Color.WHITE)
 	Snd.sfx("crit" if crit else "hit")
 	await G.wait(0.13)
@@ -338,6 +346,7 @@ func phys_hit(h: Dictionary, t: Dictionary, pw: float) -> void:
 
 func steal(_h: Dictionary, t: Dictionary) -> void:
 	var p = w().center_of(t)
+	w().pose_for(_h, "atk2", 0.4)
 	if t.stolen:
 		w().popup(p, "EMPTY", Color("#aaaaaa"), 28)
 		await G.wait(0.5)
@@ -391,6 +400,7 @@ func hero_act(h: Dictionary, cmd: Dictionary) -> void:
 				for e in live:
 					damage_enemy(e, roundi((40 + 35 * G.run.floor) * (2 if "fire" in e.weak else 1)), D.ELC.fire)
 			else:
+				w().pose_for(h, "cast", 0.6)
 				var t = cmd.t
 				if D.ITEMS[cmd.id].tgt == "ally" and t.hp <= 0:
 					for x in G.run.party:
@@ -465,6 +475,7 @@ func use_skill(h: Dictionary, id: String, tg) -> void:
 			else:
 				var t = live_enemy(tg)
 				if t != null: ts.append(t)
+			w().pose_for(h, "cast", 0.9)
 			Snd.sfx("magic")
 			for t in ts: w().burst(w().center_of(t), D.ELC[S.el])
 			await G.wait(0.38)
@@ -496,6 +507,7 @@ func use_skill(h: Dictionary, id: String, tg) -> void:
 							t = x
 							break
 				ts = [t]
+			w().pose_for(h, "cast", 0.8)
 			Snd.sfx("heal")
 			for t in ts:
 				var amt = G.stats(t).hp * S.pow if S.type == "healPct" else S.pow * s.mag / 5.0 * (0.92 + G.rf() * 0.16) * (1.4 if G.has_relic("rosary") else 1.0)
@@ -509,6 +521,7 @@ func use_skill(h: Dictionary, id: String, tg) -> void:
 			if t.hp > 0:
 				set_msg("No effect.")
 			else:
+				w().pose_for(h, "cast", 0.8)
 				t.hp = roundi(G.stats(t).hp * S.pow)
 				w().set_dead_pose(t, false)
 				w().sparkle(w().center_of(t), Color("#fff6c0"))
@@ -567,6 +580,7 @@ func enemy_act(e: Dictionary) -> void:
 
 func victory() -> void:
 	Snd.jingle("win")
+	w().victory_dance(G.run.party)
 	var alive = []
 	for h in G.run.party:
 		if h.hp > 0: alive.append(h)

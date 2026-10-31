@@ -42,6 +42,13 @@ func shot(name: String) -> void:
 	img.save_png("/home/claude/shots/%s.png" % name)
 	print("[autotest] shot ", name)
 
+func shot_now(name: String) -> void:
+	if not shots or shot_done.has(name): return
+	shot_done[name] = true
+	await get_tree().create_timer(0.2, true, false, true).timeout
+	get_viewport().get_texture().get_image().save_png("/home/claude/shots/%s.png" % name)
+	print("[autotest] shot ", name)
+
 func _process(delta: float) -> void:
 	t += delta / max(Engine.time_scale, 0.001)
 	if t > max_time:
@@ -70,9 +77,13 @@ func _process(delta: float) -> void:
 		if top.spec.get("title", "") == "Camp":
 			top.idx = 0
 		press("ui_accept"); return
+	if G.mode == "battle" and m.size() == 0 and Bt.acting != null and G.run.party.size() >= 2:
+		shot_now("10_action")
+	if G.mode == "battle" and m.size() > 0 and m.back().kind == "msg" and G.run.party.size() >= 2:
+		shot("11_victory")
 	if G.mode == "battle" and m.size() > 0:
 		var top = m.back()
-		if top.spec.get("title", "") == "Target": shot("05_battle_target")
+		if top.spec.get("title", "") == "Target" and G.run.party.size() >= 2: shot("05_battle_target")
 		elif Bt.boss: shot("06_boss")
 		else: shot("04_battle")
 		press("ui_accept"); return
