@@ -690,13 +690,21 @@ async function victory(){SFX.win();const alive=run.party.filter(h=>h.hp>0);let x
  if(has('coal'))run.party.forEach(h=>{if(h.hp>0)healHero(h,stats(h).hp*.15)});
  if(has('gravemoss'))run.party.forEach(h=>{if(h.hp<=0){h.hp=1;lines.push(`${nm(h)} stirs back to life.`)}});
  render();await say(lines.slice(0,8).join('<br>'),{x:150,y:110,w:660});await checkFeats()}
+function drawEnemyBar(e,t){const r=e.hp/e.maxhp;if(e.shown==null)e.shown=r;e.shown=r<e.shown?Math.max(r,e.shown-.012):r;
+ const col=r>.5?'#5fe07a':r>.25?'#ffd23a':'#ff5a4a';let x,y,w,h;
+ if(e.boss){w=220;h=6;x=240-w/2;y=34}else{w=28;h=4;x=Math.round(e.x-w/2);y=e.y+3}
+ ctx.fillStyle='#000';ctx.fillRect(x-1,y-1,w+2,h+2);ctx.fillStyle='#3a1a1a';ctx.fillRect(x,y,w,h);
+ ctx.fillStyle='#fff';ctx.fillRect(x,y,Math.round(w*e.shown),h);ctx.fillStyle=col;ctx.fillRect(x,y,Math.round(w*r),h);
+ ctx.fillStyle='rgba(255,255,255,.35)';ctx.fillRect(x,y,Math.round(w*r),1);
+ if(e.boss){ptext(e.name,x,y+h+3,'#ffe680','left');ptext(`${e.hp}/${e.maxhp}`,x+w,y+h+3,'#fff','right')}}
 function drawBattle(t){const th=FLOORS[run.floor].th;const g=ctx.createLinearGradient(0,0,0,70);g.addColorStop(0,th.s0);g.addColorStop(1,th.s1);ctx.fillStyle=g;ctx.fillRect(0,0,480,70);
  ctx.fillStyle=th.hi;for(let y=6;y<66;y+=10)for(let x=(y/10%2)*12;x<480;x+=24)ctx.fillRect(x,y,22,1);
  const f=ctx.createLinearGradient(0,66,0,202);f.addColorStop(0,th.wall);f.addColorStop(1,th.floor);ctx.fillStyle=f;ctx.fillRect(0,66,480,136);
  ctx.strokeStyle=th.hi;ctx.globalAlpha=.4;for(let i=-10;i<=10;i++){ctx.beginPath();ctx.moveTo(240+i*14,66);ctx.lineTo(240+i*60,202);ctx.stroke()}ctx.globalAlpha=1;
  for(const e of B.enemies){let alpha=1,md=0;if(e.dead){const k=(t-e.deathT)/450;if(k>1)continue;alpha=1-k;md=1}
   if(e.blinkT&&t-e.blinkT<350&&((t-e.blinkT)/70|0)%2)md=1;if(e.hitT&&t-e.hitT<120)md=1;
-  const c=sprite(ESPR[e.spr],e.pal,md);drawSpr(c,e.x-8*e.scale,e.y-16*e.scale,e.scale,false,alpha)}
+  const c=sprite(ESPR[e.spr],e.pal,md);drawSpr(c,e.x-8*e.scale,e.y-16*e.scale,e.scale,false,alpha);
+  if(!e.dead)drawEnemyBar(e,t)}
  for(const h of run.party){let [x,y]=heroXY(h);const dead=h.hp<=0;const ht=B.hurt.get(h);if(ht&&t-ht<300)x+=Math.sin((t-ht)/20)*3;
   if(dead){ctx.save();ctx.translate(x,y-6);ctx.rotate(-Math.PI/2);drawSpr(sprite(HROWS[h.id],CHARS[h.id].pal,3),-16,-16,2);ctx.restore()}
   else drawSpr(sprite(HROWS[h.id],CHARS[h.id].pal),x-16,y-32,2);
